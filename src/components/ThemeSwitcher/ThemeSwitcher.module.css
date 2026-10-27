@@ -1,0 +1,5 @@
+.wrap { display:flex; align-items:center; gap:6px; color:var(--muted); }
+.label { display:flex; align-items:center; gap:5px; }
+.labelText { font-size:11px; }
+.select { max-width:112px; padding:8px 7px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:var(--surface); font-size:11px; outline-offset:2px; }
+@media(max-width:560px) { .labelText { display:none; } .select { max-width:96px; } }

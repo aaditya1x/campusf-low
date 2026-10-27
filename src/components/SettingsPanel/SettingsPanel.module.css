@@ -1,0 +1,22 @@
+.page { max-width:900px; }
+.heading { margin:7px 0 23px; }
+.heading p { margin:0 0 5px; color:var(--primary); font-size:10px; font-weight:850; letter-spacing:1.5px; }
+.heading h1 { margin:0; font-size:29px; letter-spacing:-.8px; }
+.heading span { display:block; margin-top:7px; color:var(--muted); font-size:12px; }
+.panel { padding:22px; border:1px solid var(--line); border-radius:17px; background:var(--surface); box-shadow:var(--shadow); }
+.row { display:flex; align-items:center; gap:13px; padding:15px 0; border-bottom:1px solid var(--line); }
+.row:first-child { padding-top:0; } .row:last-child { border:0; padding-bottom:0; }
+.icon { width:40px; height:40px; flex:none; display:grid; place-items:center; border-radius:12px; background:var(--primary-soft); color:var(--primary); }
+.copy { min-width:0; flex:1; }
+.copy strong { font-size:12px; }
+.copy p { margin:4px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
+.secondary { padding:9px 11px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:var(--surface-soft); font-size:10px; font-weight:750; }
+.preview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:15px 0 19px 53px; border-bottom:1px solid var(--line); }
+.preview div { display:flex; align-items:center; gap:7px; padding:11px; border:1px solid var(--line); border-radius:10px; color:var(--muted); font-size:11px; }
+.preview small { grid-column:1/-1; color:var(--muted); font-size:10px; }
+@media(max-width:650px) { .panel { padding:15px; } .row { align-items:flex-start; flex-wrap:wrap; } .row>.copy { flex-basis:calc(100% - 60px); } .row :global(.themeSwitcher) { margin-left:53px; } .preview { padding-left:0; } .preview div { flex-direction:column; } }
+
+.profilePreview { order:4; width:43px; height:43px; flex:none; display:grid; place-items:center; overflow:hidden; border-radius:50%; color:#94572c; background:#ffe6d9; font-size:12px; font-weight:850; }
+.profilePreview img { width:100%; height:100%; object-fit:cover; }
+.removePhoto { width:34px; height:34px; display:grid; place-items:center; border:1px solid var(--line); border-radius:9px; color:var(--muted); background:var(--surface); }
+.removePhoto:hover { color:#dc4c4c; background:#fff0ed; }
