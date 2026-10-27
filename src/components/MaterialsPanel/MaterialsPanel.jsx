@@ -194,9 +194,9 @@ if (dbError) {
             >
               <option>DBMS</option>
               <option>DSA</option>
-              <option>PPS</option>
-              <option>MATH</option>
-              <option>General</option>
+              <option>JAVA</option>
+              <option>COA</option>
+              <option>DSD</option>
             </select>
 
             <button
