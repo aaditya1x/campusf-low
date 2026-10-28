@@ -83,48 +83,104 @@ export default function App() {
   );
 
   const [toast, setToast] = useState("");
+  const [cloudReady, setCloudReady] = useState(false);
 
   const [profilePicture, setProfilePicture] = useState("");
 
   useEffect(() => {
-    let active = true;
+  let cancelled = false;
 
-    async function loadCloudProfilePhoto() {
-      const { data, error } = await supabase.auth.getUser();
+  async function loadCloudData() {
+    setCloudReady(false);
 
-      if (error || !data.user || !active) return;
+    if (!session?.authenticated || !supabase) return;
 
-      const path = data.user.user_metadata?.avatar_path;
-      console.log("Saved path:", path);
+    try {
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
 
-      if (!path) {
-        setProfilePicture("");
+      if (authError || !authData.user) {
+        notify("Please log in again to sync your data.");
         return;
       }
 
-      const { data: signedData, error: signedError } =
-  await supabase.storage
-    .from("Profile-photos")
-    .createSignedUrl(path, 3600, {
-      download: false,
-    });
+      const { data, error } = await supabase
+        .from("user_app_data")
+        .select("data_key, data")
+        .eq("user_id", authData.user.id);
 
-      if (!active) return;
+      if (error) throw error;
+      if (cancelled) return;
 
-      if (signedError) {
-        console.error("Could not load profile photo:", signedError);
-        return;
+      const savedTasks = data.find(
+        (item) => item.data_key === "tasks"
+      );
+      const savedCourses = data.find(
+        (item) => item.data_key === "courses"
+      );
+
+      if (savedTasks && Array.isArray(savedTasks.data)) {
+        setTasks(savedTasks.data);
       }
 
-      setProfilePicture(signedData.signedUrl);
+      if (savedCourses && Array.isArray(savedCourses.data)) {
+        setCourses(savedCourses.data);
+      }
+
+      setCloudReady(true);
+    } catch (error) {
+      console.error("Cloud data loading failed:", error);
+      if (!cancelled) notify("Could not load saved data.");
     }
+  }
 
-    loadCloudProfilePhoto();
+  loadCloudData();
 
-    return () => {
-      active = false;
-    };
-  }, [session?.authenticated]);
+  return () => {
+    cancelled = true;
+  };
+}, [session?.authenticated]);
+
+useEffect(() => {
+  if (!cloudReady || !session?.authenticated || !supabase) return;
+
+  let cancelled = false;
+
+  async function saveCloudData() {
+    try {
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+
+      if (authError || !authData.user) return;
+
+      const userId = authData.user.id;
+
+      const updates = [
+        { user_id: userId, data_key: "tasks", data: tasks },
+        { user_id: userId, data_key: "courses", data: courses },
+      ];
+
+      for (const item of updates) {
+        const { error } = await supabase
+          .from("user_app_data")
+          .upsert(item, {
+            onConflict: "user_id,data_key",
+          });
+
+        if (error) throw error;
+      }
+    } catch (error) {
+      console.error("Cloud data saving failed:", error);
+      if (!cancelled) notify("Data could not sync to the cloud.");
+    }
+  }
+
+  saveCloudData();
+
+  return () => {
+    cancelled = true;
+  };
+}, [tasks, courses, cloudReady, session?.authenticated]);
 
   const [query, setQuery] = useState("");
 
@@ -193,17 +249,26 @@ export default function App() {
     }
   }
 
-  function handleLogout() {
-    try {
-      localStorage.removeItem(SESSION_KEY);
-    } catch {
-      // Ignore browser storage access errors.
+async function handleLogout() {
+  try {
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("Logout failed:", error);
+      }
     }
 
+    localStorage.removeItem(SESSION_KEY);
+  } catch (error) {
+    console.error("Logout error:", error);
+  } finally {
     setSession(null);
     setActive("Dashboard");
     setQuery("");
   }
+}
+
 
   function handleNavigate(id) {
     setActive(id);
