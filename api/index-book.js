@@ -1,6 +1,6 @@
 
 import { createClient } from "@supabase/supabase-js";
-import pdfParse from "pdf-parse";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
