@@ -124,8 +124,8 @@ export default function MaterialsPanel({
       }
 
       for (const file of files) {
-        if (file.size > 10 * 1024 * 1024) {
-          notify(`${file.name} is over the 10 MB limit.`);
+        if (file.size > 50 * 1024 * 1024) {
+          notify(`${file.name} is over the 50 MB limit.`);
           continue;
         }
 

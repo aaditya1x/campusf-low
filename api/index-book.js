@@ -139,7 +139,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > 50 * 1024 * 1024) {
       return res.status(413).json({
         error: "PDF exceeds the 10 MB indexing limit.",
       });
