@@ -284,7 +284,7 @@ if (file.name.toLowerCase().endsWith(".pdf")) {
           <strong>Upload your materials</strong>
 
           <p>
-            PDF, DOCX, PPTX, TXT, images and more · 10 MB max
+            PDF, DOCX, PPTX, TXT, images and more · 50 MB max
           </p>
 
           <div className={styles.uploadActions}>
