@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from "react";
+
 import {
   FileText,
   UploadCloud,
@@ -10,68 +11,93 @@ import {
 
 import { EmptyState } from "../EmptyState/index.js";
 import styles from "./MaterialsPanel.module.css";
+
 import {
   supabase,
   isSupabaseConfigured,
 } from "../../lib/supabase.js";
 
-function fileSize(bytes) {
+function fileSize(bytes = 0) {
   return bytes > 1048576
     ? `${(bytes / 1048576).toFixed(1)} MB`
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 export default function MaterialsPanel({
-  materials,
+  materials = [],
   setMaterials,
   notify,
   compact = false,
 }) {
   const inputRef = useRef(null);
+
   const [subject, setSubject] = useState("DBMS");
   const [uploading, setUploading] = useState(false);
 
-useEffect(() => {
-  async function loadMaterials() {
-    if (!isSupabaseConfigured || !supabase) {
-      notify("Supabase is not configured.");
-      return;
+  // Load only the logged-in user's materials
+  useEffect(() => {
+    let active = true;
+
+    async function loadMaterials() {
+      if (!isSupabaseConfigured || !supabase) {
+        notify("Supabase is not configured. Check your .env file.");
+        return;
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        if (active) {
+          setMaterials([]);
+          notify("Please log in with your Supabase account.");
+        }
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("study_materials")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (!active) return;
+
+      if (error) {
+        notify(`Could not load materials: ${error.message}`);
+        return;
+      }
+
+      const loadedMaterials = (data || []).map((item) => {
+        const { data: publicData } = supabase.storage
+          .from("study-materials")
+          .getPublicUrl(item.storage_path);
+
+        return {
+          id: item.storage_path,
+          name: item.name,
+          subject: item.subject,
+          size: item.size,
+          type: item.type,
+          addedAt: item.created_at,
+          url: publicData.publicUrl,
+          path: item.storage_path,
+        };
+      });
+
+      setMaterials(loadedMaterials);
     }
 
-    const { data, error } = await supabase
-      .from("study_materials")
-      .select("*")
-      .order("created_at", { ascending: false });
+    loadMaterials();
 
-    if (error) {
-      notify(`Could not load materials: ${error.message}`);
-      return;
-    }
+    return () => {
+      active = false;
+    };
+  }, [setMaterials, notify]);
 
-    const loadedMaterials = (data || []).map((item) => {
-      const { data: publicData } = supabase.storage
-        .from("study-materials")
-        .getPublicUrl(item.storage_path);
-
-      return {
-        id: item.storage_path,
-        name: item.name,
-        subject: item.subject,
-        size: item.size,
-        type: item.type,
-        addedAt: item.created_at,
-        url: publicData.publicUrl,
-        path: item.storage_path,
-      };
-    });
-
-    setMaterials(loadedMaterials);
-  }
-
-  loadMaterials();
-}, [setMaterials, notify]);
-
-
+  // Upload files and save their ownership
   async function handleFiles(event) {
     const input = event.target;
     const files = Array.from(input.files || []);
@@ -87,6 +113,16 @@ useEffect(() => {
     setUploading(true);
 
     try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        notify("Please log in with your Supabase account before uploading.");
+        return;
+      }
+
       for (const file of files) {
         if (file.size > 10 * 1024 * 1024) {
           notify(`${file.name} is over the 10 MB limit.`);
@@ -97,48 +133,106 @@ useEffect(() => {
           /[^a-zA-Z0-9._-]/g,
           "_"
         );
+
         const path = `${crypto.randomUUID()}-${safeName}`;
 
-        const { data, error } = await supabase.storage
+        const {
+          data: uploadedFile,
+          error: uploadError,
+        } = await supabase.storage
           .from("study-materials")
           .upload(path, file);
 
-        if (error) {
-          notify(`Upload failed: ${error.message}`);
+        if (uploadError) {
+          notify(`Upload failed: ${uploadError.message}`);
+          continue;
+        }
+
+        const { error: dbError } = await supabase
+          .from("study_materials")
+          .insert({
+            user_id: user.id,
+            name: file.name,
+            subject,
+            size: file.size,
+            type: file.name.split(".").pop().toUpperCase(),
+            storage_path: uploadedFile.path,
+          });
+
+        if (dbError) {
+          notify(
+            `File uploaded, but database save failed: ${dbError.message}`
+          );
           continue;
         }
 
         const { data: publicData } = supabase.storage
           .from("study-materials")
-          .getPublicUrl(data.path);
+          .getPublicUrl(uploadedFile.path);
 
         const material = {
-          id: data.path,
+          id: uploadedFile.path,
           name: file.name,
           subject,
           size: file.size,
           type: file.name.split(".").pop().toUpperCase(),
-          addedAt: "Just now",
+          addedAt: new Date().toISOString(),
           url: publicData.publicUrl,
-          path: data.path,
+          path: uploadedFile.path,
         };
-        const { error: dbError } = await supabase
-  .from("study_materials")
-  .insert({
-    name: file.name,
-    subject: subject,
-    size: file.size,
-    type: file.name.split(".").pop().toUpperCase(),
-    storage_path: data.path,
-  });
 
-if (dbError) {
-  notify(`File uploaded, but database save failed: ${dbError.message}`);
-  continue;
+      
+setMaterials((old) => [material, ...old]);
+
+// Automatically index PDFs for Book-Only AI
+if (file.name.toLowerCase().endsWith(".pdf")) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.access_token) {
+    notify(
+      `${file.name} uploaded, but please log in again to index it.`
+    );
+    continue;
+  }
+
+  try {
+    const response = await fetch("/api/index-book", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        storage_path: uploadedFile.path,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      notify(
+        `${file.name} uploaded, but indexing failed: ${
+          result.error || "Unknown error"
+        }`
+      );
+      continue;
+    }
+
+    notify(
+      `${file.name} uploaded and indexed successfully.`
+    );
+  } catch (error) {
+    notify(
+      `${file.name} uploaded, but indexing could not connect to the server.`
+    );
+  }
+} else {
+  notify(`${file.name} uploaded successfully.`);
 }
-        setMaterials((old) => [material, ...old]);
 
-        notify(`${file.name} uploaded successfully.`);
       }
     } catch (error) {
       notify(`Upload error: ${error.message}`);
@@ -148,11 +242,15 @@ if (dbError) {
     }
   }
 
+  // Remove from the current screen only
   function remove(material) {
     setMaterials((old) =>
       old.filter((item) => item.id !== material.id)
     );
-    notify("Material removed from this list.");
+
+    notify(
+      "Hidden from this list only. The database file has not been deleted."
+    );
   }
 
   const list = compact ? materials.slice(0, 3) : materials;
@@ -164,6 +262,7 @@ if (dbError) {
           <h2>
             {compact ? "Recent materials" : "Study materials"}
           </h2>
+
           <p>
             {compact
               ? "Your recently saved notes"
@@ -181,7 +280,9 @@ if (dbError) {
       {!compact && (
         <div className={styles.upload}>
           <UploadCloud size={29} />
+
           <strong>Upload your materials</strong>
+
           <p>
             PDF, DOCX, PPTX, TXT, images and more · 10 MB max
           </p>
@@ -189,7 +290,7 @@ if (dbError) {
           <div className={styles.uploadActions}>
             <select
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(event) => setSubject(event.target.value)}
               aria-label="Select material subject"
             >
               <option>DBMS</option>
@@ -221,24 +322,28 @@ if (dbError) {
       )}
 
       <div className={styles.list}>
-        {list.map((m) => (
-          <div className={styles.item} key={m.id}>
+        {list.map((material) => (
+          <div className={styles.item} key={material.id}>
             <span className={styles.fileIcon}>
               <FileText size={18} />
             </span>
 
             <div className={styles.info}>
-              <strong title={m.name}>{m.name}</strong>
+              <strong title={material.name}>
+                {material.name}
+              </strong>
+
               <small>
-                {m.subject} · {m.type} · {fileSize(m.size)}
+                {material.subject} · {material.type} ·{" "}
+                {fileSize(material.size)}
               </small>
             </div>
 
-            {m.url && (
+            {material.url && (
               <a
                 className={styles.open}
-                href={m.url}
-                download={m.name}
+                href={material.url}
+                download={material.name}
                 title="Download file"
                 target="_blank"
                 rel="noreferrer"
@@ -250,9 +355,9 @@ if (dbError) {
             <button
               type="button"
               className={styles.remove}
-              onClick={() => remove(m)}
-              title="Remove material"
-              aria-label={`Remove ${m.name}`}
+              onClick={() => remove(material)}
+              title="Hide material from this list"
+              aria-label={`Hide ${material.name}`}
             >
               <Trash2 size={15} />
             </button>

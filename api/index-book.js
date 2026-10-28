@@ -1,0 +1,223 @@
+
+import { createClient } from "@supabase/supabase-js";
+import pdfParse from "pdf-parse";
+
+const supabaseUrl =
+  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+
+const anonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY;
+
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const authClient =
+  supabaseUrl && anonKey
+    ? createClient(supabaseUrl, anonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      })
+    : null;
+
+const admin =
+  supabaseUrl && serviceKey
+    ? createClient(supabaseUrl, serviceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      })
+    : null;
+
+function splitIntoChunks(text, maxLength = 1400) {
+  const words = text.split(/\s+/);
+  const chunks = [];
+  let current = "";
+
+  for (const word of words) {
+    if ((current + " " + word).trim().length > maxLength) {
+      if (current.trim()) chunks.push(current.trim());
+      current = word;
+    } else {
+      current = (current + " " + word).trim();
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+
+  return chunks;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({
+      error: "Only POST requests are allowed.",
+    });
+  }
+
+  if (!authClient || !admin) {
+    return res.status(500).json({
+      error: "Missing Supabase server environment variables.",
+    });
+  }
+
+  // Require a real Supabase Auth access token.
+  const authorization = req.headers.authorization || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+
+  if (!match) {
+    return res.status(401).json({
+      error: "Please log in before indexing a PDF.",
+    });
+  }
+
+  const {
+    data: { user },
+    error: authError,
+  } = await authClient.auth.getUser(match[1]);
+
+  if (authError || !user) {
+    return res.status(401).json({
+      error: "Your session is invalid or expired. Please log in again.",
+    });
+  }
+
+  const { storage_path } = req.body || {};
+
+  if (
+    typeof storage_path !== "string" ||
+    !storage_path.trim() ||
+    storage_path.startsWith("/") ||
+    storage_path.split("/").includes("..")
+  ) {
+    return res.status(400).json({
+      error: "A valid storage_path is required.",
+    });
+  }
+
+  try {
+    // Verify that this file belongs to the authenticated user.
+    const { data: material, error: materialError } = await admin
+      .from("study_materials")
+      .select("name, subject, storage_path, user_id, type")
+      .eq("storage_path", storage_path)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (materialError) {
+      console.error("Material lookup failed:", materialError);
+      return res.status(500).json({
+        error: "Could not verify file ownership.",
+      });
+    }
+
+    if (!material) {
+      return res.status(404).json({
+        error: "File not found for your account.",
+      });
+    }
+
+    if (
+      material.type?.toLowerCase() !== "pdf" &&
+      !material.name.toLowerCase().endsWith(".pdf")
+    ) {
+      return res.status(400).json({
+        error: "Only PDF files can be indexed.",
+      });
+    }
+
+    const { data: file, error: downloadError } = await admin.storage
+      .from("study-materials")
+      .download(storage_path);
+
+    if (downloadError || !file) {
+      return res.status(404).json({
+        error: "Could not download the PDF from Storage.",
+      });
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      return res.status(413).json({
+        error: "PDF exceeds the 10 MB indexing limit.",
+      });
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    if (buffer.subarray(0, 5).toString() !== "%PDF-") {
+      return res.status(400).json({
+        error: "The selected file is not a valid PDF.",
+      });
+    }
+
+    const pages = [];
+
+    await pdfParse(buffer, {
+      pagerender: async (pageData) => {
+        const content = await pageData.getTextContent();
+        const pageText = content.items
+          .map((item) => item.str || "")
+          .join(" ")
+          .trim();
+
+        pages.push(pageText);
+        return pageText;
+      },
+    });
+
+    const rows = [];
+
+    pages.forEach((pageText, index) => {
+      for (const content of splitIntoChunks(pageText)) {
+        rows.push({
+          user_id: user.id,
+          storage_path,
+          book_name: material.name,
+          subject: material.subject,
+          page_number: index + 1,
+          content,
+        });
+      }
+    });
+
+    if (!rows.length) {
+      return res.status(422).json({
+        error:
+          "No selectable text was found. This may be a scanned PDF and require OCR.",
+      });
+    }
+
+    // Remove only this user's previous index for this file.
+    const { error: deleteError } = await admin
+      .from("book_chunks")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("storage_path", storage_path);
+
+    if (deleteError) throw deleteError;
+
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error: insertError } = await admin
+        .from("book_chunks")
+        .insert(rows.slice(i, i + 100));
+
+      if (insertError) throw insertError;
+    }
+
+    return res.status(200).json({
+      success: true,
+      book_name: material.name,
+      pages_processed: pages.length,
+      chunks_saved: rows.length,
+    });
+  } catch (error) {
+    console.error("PDF indexing failed:", error);
+
+    return res.status(500).json({
+      error: "PDF indexing failed. Check the server logs.",
+    });
+  }
+}
