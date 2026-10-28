@@ -95,9 +95,7 @@ export default function App() {
       if (error || !data.user || !active) return;
 
       const path = data.user.user_metadata?.avatar_path;
-
-      console.log("USER METADATA:", data.user.user_metadata);
-      console.log("SAVED PHOTO PATH:", path);
+      console.log("Saved path:", path);
 
       if (!path) {
         setProfilePicture("");

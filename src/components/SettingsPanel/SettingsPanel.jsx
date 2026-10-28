@@ -59,6 +59,7 @@ export default function SettingsPanel({
       const user = data.user;
       const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
       const path = `${user.id}/profile-${Date.now()}.${extension}`;
+      console.log("UPLOADED STORAGE PATH:", path);
 
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
@@ -78,6 +79,8 @@ export default function SettingsPanel({
 
       if (updateError) throw updateError;
       console.log("Saved avatar path:", path);
+      console.log("Current user ID:", user.id);
+console.log("Bucket:", BUCKET);
 
       const { data: signedData, error: signedError } = await supabase.storage
         .from(BUCKET)
