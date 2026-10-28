@@ -1,5 +1,6 @@
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from 
+"@supabase/supabase-js";
 import { PDFParse } from "pdf-parse";
 
 const supabaseUrl =
@@ -154,17 +155,22 @@ export default async function handler(req, res) {
     }
 
 
-const parser = new PDFParse({ data: buffer });
-let pages = [];
+const pages = [];
 
-try {
-  const result = await parser.getText();
+const result = await pdf(buffer);
 
-  pages = (result.pages || []).map((page) =>
-    (page.text || "").trim()
-  );
-} finally {
-  await parser.destroy();
+const pageCount = result.numpages || 1;
+const fullText = result.text || "";
+
+const pageTexts = fullText.split(/\f/);
+
+for (let i = 0; i < pageCount; i++) {
+  pages.push((pageTexts[i] || "").trim());
+}
+
+
+if (pages.every((page) => !page) && fullText.trim()) {
+  pages[0] = fullText.trim();
 }
 
 
