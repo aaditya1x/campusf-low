@@ -1,230 +1,134 @@
 
 import { useState } from "react";
-import {
-  Copy,
-  Sparkles,
-  BookOpen,
-  Brain,
-  ListChecks,
-  LoaderCircle,
-  Upload,
-  FileText,
-  X,
-} from "lucide-react";
+import { Copy, Sparkles, BookOpen, Brain, ListChecks, LoaderCircle } from "lucide-react";
 import styles from "./AIStudyTools.module.css";
 
-const tools = [
-  {
-    id: "summarize",
-    title: "Summarize",
-    description: "Create concise revision notes.",
-    icon: BookOpen,
-  },
-  {
-    id: "explain",
-    title: "Explain",
-    description: "Understand topics in simple language.",
-    icon: Brain,
-  },
-  {
-    id: "quiz",
-    title: "Quiz",
-    description: "Generate practice questions and answers.",
-    icon: ListChecks,
-  },
+const modes = [
+  { id: "summarize", label: "Summarize", icon: BookOpen, description: "Turn your notes into a concise revision guide." },
+  { id: "explain", label: "Explain", icon: Brain, description: "Understand a difficult concept in simple language." },
+  { id: "quiz", label: "Quiz", icon: ListChecks, description: "Create practice questions to test your understanding." },
 ];
 
-export default function AIStudyTools() {
+export default function AIStudyTools({ notify = () => {} }) {
   const [mode, setMode] = useState("summarize");
   const [text, setText] = useState("");
-  const [file, setFile] = useState(null);
   const [result, setResult] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  function handleFileChange(event) {
-    const selected = event.target.files?.[0];
-    if (!selected) return;
-
-    const isImage = selected.type.startsWith("image/");
-    const isPDF = selected.type === "application/pdf";
-
-    if (!isImage && !isPDF) {
-      setError("Please upload an image or PDF file.");
-      event.target.value = "";
-      return;
-    }
-
-    if (selected.size > 10 * 1024 * 1024) {
-      setError("File size must be 10 MB or less.");
-      event.target.value = "";
-      return;
-    }
-
-    setFile(selected);
-    setError("");
-    setResult("");
-  }
 
   async function generate() {
-    if (!text.trim() && !file) {
-      setError("Enter notes or upload a photo/PDF first.");
+    if (!text.trim()) {
+      notify("Please paste your notes or topic first.");
       return;
     }
 
-    setLoading(true);
+    if (text.trim().length < 10) {
+      notify("Please enter at least a few lines of notes.");
+      return;
+    }
+
+    setBusy(true);
     setError("");
     setResult("");
 
     try {
-      let uploadedFile;
-
-      if (file) {
-        const data = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-
-          reader.onload = () => {
-            const value = reader.result;
-            resolve(String(value).split(",")[1]);
-          };
-
-          reader.onerror = () => reject(new Error("Could not read the file."));
-          reader.readAsDataURL(file);
-        });
-
-        uploadedFile = {
-          mimeType: file.type,
-          data,
-        };
-      }
-
       const response = await fetch("/api/ai", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          mode,
-          text: text.trim(),
-          file: uploadedFile,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, text: text.trim() }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.error || "AI could not process your request.");
+        throw new Error(data.error || `Request failed (${response.status})`);
       }
 
-      setResult(data.result || "No result was returned.");
+      if (!data.result || typeof data.result !== "string") {
+        throw new Error("The AI returned an empty response. Try again.");
+      }
+
+      setResult(data.result);
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      const message =
+        err.message === "Failed to fetch"
+          ? "AI server could not be reached. Check the live deployment and try again."
+          : err.message || "Something went wrong. Please try again.";
+
+      setError(message);
+      notify(message);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   async function copyResult() {
     try {
       await navigator.clipboard.writeText(result);
+      notify("AI result copied.");
     } catch {
-      setError("Could not copy the result. Please select and copy it manually.");
+      notify("Copy failed. Please select and copy the result manually.");
     }
   }
 
   return (
-    <section className={styles.container}>
-      <div className={styles.header}>
-        <Sparkles size={24} />
+    <section className={styles.section}>
+      <div className={styles.heading}>
         <div>
-          <h2>AI Study Assistant</h2>
-          <p>Upload notes, a photo or a PDF to study smarter.</p>
+          <h2>AI Study Tools</h2>
+          <p>Turn your study notes into useful revision material.</p>
         </div>
+        <Sparkles size={24} />
       </div>
 
-      <div className={styles.tools}>
-        {tools.map((tool) => {
-          const Icon = tool.icon;
-
-          return (
-            <button
-              type="button"
-              key={tool.id}
-              className={`${styles.toolCard} ${
-                mode === tool.id ? styles.active : ""
-              }`}
-              onClick={() => setMode(tool.id)}
-            >
-              <Icon size={22} />
-              <strong>{tool.title}</strong>
-              <span>{tool.description}</span>
-            </button>
-          );
-        })}
+      <div className={styles.modes}>
+        {modes.map(({ id, label, icon: Icon, description }) => (
+          <button
+            key={id}
+            type="button"
+            className={`${styles.modeCard} ${mode === id ? styles.activeMode : ""}`}
+            onClick={() => {
+              setMode(id);
+              setError("");
+            }}
+            aria-pressed={mode === id}
+            disabled={busy}
+          >
+            <Icon size={20} />
+            <strong>{label}</strong>
+            <span>{description}</span>
+          </button>
+        ))}
       </div>
 
-      <div className={styles.inputSection}>
+      <div className={styles.inputPanel}>
         <label htmlFor="study-notes">Your notes or topic</label>
-
         <textarea
           id="study-notes"
-          className={styles.textarea}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="Type a topic, paste your notes, or upload a file below..."
-          rows={7}
+          placeholder="Paste your syllabus, class notes, or a topic here..."
           maxLength={30000}
+          rows={9}
+          disabled={busy}
         />
-
-        <div className={styles.fileUpload}>
-          <label htmlFor="study-file" className={styles.uploadButton}>
-            <Upload size={18} />
-            Upload photo or PDF
-          </label>
-
-          <input
-            id="study-file"
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={handleFileChange}
-            className={styles.fileInput}
-          />
-
-          <span className={styles.fileHint}>Maximum file size: 10 MB</span>
-        </div>
-
-        {file && (
-          <div className={styles.selectedFile}>
-            <FileText size={18} />
-            <span>{file.name}</span>
-            <button
-              type="button"
-              onClick={() => setFile(null)}
-              aria-label="Remove uploaded file"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        )}
-
-        <div className={styles.footer}>
-          <span>{text.length.toLocaleString()} / 30,000 characters</span>
-
+        <div className={styles.inputFooter}>
+          <small>{text.length.toLocaleString()} / 30,000 characters</small>
           <button
             type="button"
-            className={styles.generateButton}
             onClick={generate}
-            disabled={loading}
+            disabled={busy || !text.trim()}
+            className={styles.generateButton}
           >
-            {loading ? (
+            {busy ? (
               <>
-                <LoaderCircle className={styles.spinner} size={18} />
-                Processing...
+                <LoaderCircle size={18} className={styles.spinner} />
+                Generating...
               </>
             ) : (
               <>
                 <Sparkles size={18} />
-                Generate
+                Generate {mode === "quiz" ? "Quiz" : mode === "explain" ? "Explanation" : "Summary"}
               </>
             )}
           </button>
@@ -233,21 +137,26 @@ export default function AIStudyTools() {
 
       {error && (
         <div className={styles.error} role="alert">
-          {error}
+          <strong>Could not generate a result</strong>
+          <p>{error}</p>
         </div>
       )}
 
       {result && (
-        <div className={styles.resultSection}>
-          <div className={styles.resultHeader}>
-            <h3>AI Result</h3>
-            <button type="button" onClick={copyResult}>
-              <Copy size={16} />
-              Copy
+        <div className={styles.result}>
+          <div className={styles.resultHead}>
+            <div>
+              <small>AI STUDY OUTPUT</small>
+              <h3>{mode === "quiz" ? "PRACTICE QUIZ" : mode === "explain" ? "SIMPLE EXPLANATION" : "STUDY SUMMARY"}</h3>
+            </div>
+            <button type="button" onClick={copyResult} title="Copy result">
+              <Copy size={16} /> Copy
             </button>
           </div>
-
-          <div className={styles.resultText}>{result}</div>
+          <pre className={styles.resultText}>{result}</pre>
+          <small className={styles.liveNote}>
+            Generated by the AI service.
+          </small>
         </div>
       )}
     </section>
