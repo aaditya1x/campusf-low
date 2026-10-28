@@ -126,10 +126,7 @@ export default function AIStudyTools({ notify }) {
               </button>
             </div>
             <pre>{result}</pre>
-            <small className={styles.demoNote}>
-              Demo output generated locally. Connect a secure backend and AI
-              provider for live results.
-            </small>
+            
           </div>
         )}
       </div>
