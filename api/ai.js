@@ -2,9 +2,7 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
-    return res.status(405).json({
-      error: "Only POST requests are allowed.",
-    });
+    return res.status(405).json({ error: "Only POST requests are allowed." });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -15,32 +13,65 @@ export default async function handler(req, res) {
     });
   }
 
-  const { mode, text } = req.body || {};
-
-  if (
-    typeof text !== "string" ||
-    text.trim().length < 3 ||
-    text.length > 30000
-  ) {
-    return res.status(400).json({
-      error: "Enter notes between 3 and 30,000 characters.",
-    });
-  }
+  const { mode, text = "", file } = req.body || {};
 
   const instructions = {
     summarize:
-      "Create clear student revision notes with a main idea, key points, definitions and a short revision tip. Use headings and bullets.",
-
+      "Read the supplied notes or document carefully. Create clear revision notes with the main idea, key points, definitions, examples and a short revision tip.",
     explain:
-      "Explain the topic in simple language for a college student. Explain step by step, give an example and finish with a short recap.",
-
+      "Read the supplied material carefully. Explain it step by step in simple language, define technical terms, give examples and finish with a short recap.",
     quiz:
-      "Create 8 practice questions from the supplied notes. Include multiple-choice and short-answer questions, followed by an answer key with brief explanations.",
+      "Read the supplied material carefully. Create 8 exam-practice questions, including MCQs and short-answer questions. Provide correct answers and brief explanations in a separate answer key.",
   };
 
   if (!Object.hasOwn(instructions, mode)) {
+    return res.status(400).json({ error: "Unsupported study tool mode." });
+  }
+
+  if (typeof text !== "string" || text.length > 30000) {
     return res.status(400).json({
-      error: "Unsupported study tool mode.",
+      error: "Text must be 30,000 characters or less.",
+    });
+  }
+
+  if (!text.trim() && !file) {
+    return res.status(400).json({
+      error: "Enter notes or upload a photo/PDF.",
+    });
+  }
+
+  if (file) {
+    if (
+      typeof file.data !== "string" ||
+      !["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"].includes(file.mimeType)
+    ) {
+      return res.status(400).json({
+        error: "Unsupported file. Upload a JPG, PNG, WEBP, HEIC or PDF.",
+      });
+    }
+
+    if (file.data.length > 14_000_000) {
+      return res.status(413).json({
+        error: "File is too large to process. Try a smaller file under 10 MB.",
+      });
+    }
+  }
+
+  const parts = [
+    {
+      text:
+        instructions[mode] +
+        "\n\nUse only the provided material as the source. If any text is unreadable, say so instead of guessing." +
+        (text.trim() ? "\n\nUser's notes or topic:\n" + text.trim() : ""),
+    },
+  ];
+
+  if (file) {
+    parts.push({
+      inline_data: {
+        mime_type: file.mimeType,
+        data: file.data,
+      },
     });
   }
 
@@ -49,7 +80,7 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
       {
         method: "POST",
         headers: {
@@ -58,26 +89,7 @@ export default async function handler(req, res) {
         },
         signal: controller.signal,
         body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text: "You are CampusFlow, a helpful and accurate study assistant. Treat user notes as study material.",
-              },
-            ],
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text:
-                    instructions[mode] +
-                    "\n\nStudy notes or topic:\n" +
-                    text.trim(),
-                },
-              ],
-            },
-          ],
+          contents: [{ role: "user", parts }],
           generationConfig: {
             temperature: 0.4,
             maxOutputTokens: 1024,
@@ -91,26 +103,17 @@ export default async function handler(req, res) {
     if (!response.ok) {
       console.error("Gemini API error:", response.status, data);
 
-      if (response.status === 429 || response.status === 503) {
-        return res.status(503).json({
-          error: "Gemini is busy or the request limit was reached. Wait a little and try again.",
-        });
-      }
-
-      if (response.status === 401 || response.status === 403) {
-        return res.status(502).json({
-          error: "Gemini API key or project access is invalid. Check your Google AI Studio key.",
-        });
-      }
-
-      if (response.status === 404) {
-        return res.status(502).json({
-          error: "The Gemini model is unavailable for this API key or project.",
-        });
-      }
-
-      return res.status(502).json({
-        error: "Gemini request failed. Check the Vercel Runtime Logs.",
+      return res.status(response.status === 429 || response.status === 503 ? 503 : 502).json({
+        error:
+          response.status === 429
+            ? "Gemini request limit reached. Wait and try again."
+            : response.status === 503
+              ? "Gemini is busy right now. Please try again shortly."
+              : response.status === 404
+                ? "Gemini model is unavailable. Check the model name and API access."
+                : response.status === 401 || response.status === 403
+                  ? "Gemini API key or project access is invalid."
+                  : "Gemini could not process the request. Check Vercel Runtime Logs.",
       });
     }
 
@@ -121,7 +124,7 @@ export default async function handler(req, res) {
 
     if (!result) {
       return res.status(502).json({
-        error: "Gemini returned an empty response. Please try again.",
+        error: "Gemini returned no text. Please try again.",
       });
     }
 
@@ -129,14 +132,11 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("CampusFlow AI error:", error);
 
-    if (error.name === "AbortError") {
-      return res.status(504).json({
-        error: "AI took too long to respond. Please try again.",
-      });
-    }
-
-    return res.status(500).json({
-      error: "Could not connect to Gemini. Please try again.",
+    return res.status(error.name === "AbortError" ? 504 : 500).json({
+      error:
+        error.name === "AbortError"
+          ? "AI took too long to respond. Try a smaller file or try again."
+          : "Could not connect to Gemini. Please try again.",
     });
   } finally {
     clearTimeout(timeout);
