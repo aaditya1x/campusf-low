@@ -1,47 +1,62 @@
+
 import { useState } from "react";
-import { BrainCircuit, Sparkles, Copy, RotateCcw } from "lucide-react";
+import { Copy, Sparkles, BookOpen, Brain, ListChecks, LoaderCircle } from "lucide-react";
 import styles from "./AIStudyTools.module.css";
-const descriptions = {
-  summarize: "Turn your notes into a concise revision guide.",
-  explain: "Understand a difficult concept in simple language.",
-  quiz: "Create practice questions to test your understanding.",
-};
-export default function AIStudyTools({ notify }) {
+
+const modes = [
+  { id: "summarize", label: "Summarize", icon: BookOpen, description: "Turn your notes into a concise revision guide." },
+  { id: "explain", label: "Explain", icon: Brain, description: "Understand a difficult concept in simple language." },
+  { id: "quiz", label: "Quiz", icon: ListChecks, description: "Create practice questions to test your understanding." },
+];
+
+export default function AIStudyTools({ notify = () => {} }) {
   const [mode, setMode] = useState("summarize");
   const [text, setText] = useState("");
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function generate() {
+    if (!text.trim()) {
+      notify("Please paste your notes or topic first.");
+      return;
+    }
+
     if (text.trim().length < 10) {
-      notify("Paste at least a few lines of notes or a topic first.");
+      notify("Please enter at least a few lines of notes.");
       return;
     }
 
     setBusy(true);
+    setError("");
     setResult("");
 
     try {
       const response = await fetch("/api/ai", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: text.trim(),
-          action: mode,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, text: text.trim() }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.error || "AI request failed.");
+        throw new Error(data.error || `Request failed (${response.status})`);
+      }
+
+      if (!data.result || typeof data.result !== "string") {
+        throw new Error("The AI returned an empty response. Try again.");
       }
 
       setResult(data.result);
-    } catch (error) {
-      notify(error.message || "Unable to connect to the AI service.");
+    } catch (err) {
+      const message =
+        err.message === "Failed to fetch"
+          ? "AI server could not be reached. Check the live deployment and try again."
+          : err.message || "Something went wrong. Please try again.";
+
+      setError(message);
+      notify(message);
     } finally {
       setBusy(false);
     }
@@ -50,86 +65,100 @@ export default function AIStudyTools({ notify }) {
   async function copyResult() {
     try {
       await navigator.clipboard.writeText(result);
-      notify("Result copied.");
+      notify("AI result copied.");
     } catch {
-      notify("Clipboard access was blocked by the browser.");
+      notify("Copy failed. Please select and copy the result manually.");
     }
   }
+
   return (
-    <section className={styles.page}>
-      <div className={styles.intro}>
-        <span className={styles.icon}>
-          <BrainCircuit size={25} />
-        </span>
+    <section className={styles.section}>
+      <div className={styles.heading}>
         <div>
-          <p className={styles.eyebrow}>AI LEARNING LAB</p>
-          <h1>AI Study Tools</h1>
-          <p>Turn study material into a clearer path to understanding.</p>
+          <h2>AI Study Tools</h2>
+          <p>Turn your study notes into useful revision material.</p>
         </div>
+        <Sparkles size={24} />
       </div>
-      <div className={styles.panel}>
-        <label className={styles.label}>Choose a tool</label>
-        <div className={styles.modeGrid}>
-          {[
-            ["summarize", "Summarize notes"],
-            ["explain", "Explain a concept"],
-            ["quiz", "Generate a quiz"],
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setMode(id)}
-              className={`${styles.mode} ${mode === id ? styles.modeActive : ""}`}
-            >
-              <Sparkles size={17} />
-              <strong>{label}</strong>
-              <small>{descriptions[id]}</small>
-            </button>
-          ))}
-        </div>
-        <label className={styles.label} htmlFor="ai-notes">
-          Your notes or topic
-        </label>
-        <textarea
-          id="ai-notes"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={8}
-          maxLength={30000}
-          placeholder="Paste DBMS notes, a textbook paragraph, or a topic such as normalization..."
-        />
-        <div className={styles.footer}>
-          <span>{text.length.toLocaleString()} / 30,000 characters</span>
+
+      <div className={styles.modes}>
+        {modes.map(({ id, label, icon: Icon, description }) => (
           <button
+            key={id}
+            type="button"
+            className={`${styles.modeCard} ${mode === id ? styles.activeMode : ""}`}
             onClick={() => {
-              setText("");
-              setResult("");
+              setMode(id);
+              setError("");
             }}
-            className={styles.reset}
-          >
-            <RotateCcw size={14} /> Clear
-          </button>
-          <button
-            onClick={generate}
+            aria-pressed={mode === id}
             disabled={busy}
-            className={styles.generate}
           >
-            <Sparkles size={15} />
-            {busy ? "Generating..." : "Generate"}
+            <Icon size={20} />
+            <strong>{label}</strong>
+            <span>{description}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.inputPanel}>
+        <label htmlFor="study-notes">Your notes or topic</label>
+        <textarea
+          id="study-notes"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Paste your syllabus, class notes, or a topic here..."
+          maxLength={30000}
+          rows={9}
+          disabled={busy}
+        />
+        <div className={styles.inputFooter}>
+          <small>{text.length.toLocaleString()} / 30,000 characters</small>
+          <button
+            type="button"
+            onClick={generate}
+            disabled={busy || !text.trim()}
+            className={styles.generateButton}
+          >
+            {busy ? (
+              <>
+                <LoaderCircle size={18} className={styles.spinner} />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={18} />
+                Generate {mode === "quiz" ? "Quiz" : mode === "explain" ? "Explanation" : "Summary"}
+              </>
+            )}
           </button>
         </div>
-        {result && (
-          <div className={styles.result}>
-            <div className={styles.resultHead}>
-              <strong>Study output</strong>
-              <button onClick={copyResult} title="Copy result">
-                <Copy size={15} /> Copy
-              </button>
-            </div>
-            <pre>{result}</pre>
-            
-          </div>
-        )}
       </div>
+
+      {error && (
+        <div className={styles.error} role="alert">
+          <strong>Could not generate a result</strong>
+          <p>{error}</p>
+        </div>
+      )}
+
+      {result && (
+        <div className={styles.result}>
+          <div className={styles.resultHead}>
+            <div>
+              <small>AI STUDY OUTPUT</small>
+              <h3>{mode === "quiz" ? "PRACTICE QUIZ" : mode === "explain" ? "SIMPLE EXPLANATION" : "STUDY SUMMARY"}</h3>
+            </div>
+            <button type="button" onClick={copyResult} title="Copy result">
+              <Copy size={16} /> Copy
+            </button>
+          </div>
+          <pre className={styles.resultText}>{result}</pre>
+          <small className={styles.liveNote}>
+            Generated by the AI service.
+          </small>
+        </div>
+      )}
     </section>
   );
 }
