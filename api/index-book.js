@@ -1,6 +1,6 @@
 
 import { createClient } from "@supabase/supabase-js";
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import { PDFParse } from "pdf-parse";
 
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -153,20 +153,20 @@ export default async function handler(req, res) {
       });
     }
 
-    const pages = [];
 
-    await pdfParse(buffer, {
-      pagerender: async (pageData) => {
-        const content = await pageData.getTextContent();
-        const pageText = content.items
-          .map((item) => item.str || "")
-          .join(" ")
-          .trim();
+const parser = new PDFParse({ data: buffer });
+let pages = [];
 
-        pages.push(pageText);
-        return pageText;
-      },
-    });
+try {
+  const result = await parser.getText();
+
+  pages = (result.pages || []).map((page) =>
+    (page.text || "").trim()
+  );
+} finally {
+  await parser.destroy();
+}
+
 
     const rows = [];
 
