@@ -78,3 +78,32 @@ button { cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px; }
 button:disabled { cursor: not-allowed; opacity: .6; }
 ::selection { background: var(--primary-soft); }
+
+
+/* Theme compatibility: keep text readable across all palettes */
+:root {
+  --text-primary: var(--text);
+  --text-secondary: var(--muted);
+  --accent: var(--primary);
+  --border: var(--line);
+  --accent-soft: var(--primary-soft);
+}
+
+/* Inputs and dropdowns inherit the active theme */
+input,
+textarea,
+select {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+select option {
+  color: var(--text);
+  background: var(--surface);
+}
