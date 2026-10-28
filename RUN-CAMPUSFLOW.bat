@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo ========================================
-echo        CampusFlow - First Run
+echo        Study Sync - First Run
 echo ========================================
 echo.
 where node >nul 2>nul
@@ -22,7 +22,7 @@ if not exist node_modules (
   if errorlevel 1 goto failed
 )
 echo.
-echo Starting CampusFlow...
+echo Starting Study Sync...
 echo Keep this window open while using the website.
 echo Open http://localhost:5173/ if the browser does not open automatically.
 call npm run dev -- --open

@@ -28,7 +28,7 @@ export default function TestSupabase() {
 
   return (
     <div style={{ padding: 30, fontFamily: "Arial" }}>
-      <h1>CampusFlow Connection Test</h1>
+      <h1>Study Sync Connection Test</h1>
       <p>{status}</p>
     </div>
   );

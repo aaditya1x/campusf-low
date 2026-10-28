@@ -1,6 +1,6 @@
-# CampusFlow
+# Study Sync
 
-CampusFlow is a React + Vite study dashboard. This package has a clean project root, working Vite scripts, and the Supabase JavaScript client dependency prepared.
+Study Sync is a React + Vite study dashboard. This package has a clean project root, working Vite scripts, and the Supabase JavaScript client dependency prepared.
 
 ## Run on Windows (recommended)
 

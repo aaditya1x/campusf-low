@@ -61,7 +61,7 @@ export default async function handler(req, res) {
           systemInstruction: {
             parts: [
               {
-                text: "You are CampusFlow, a helpful and accurate study assistant. Treat user notes as study material.",
+                text: "You are Study Sync, a helpful and accurate study assistant. Treat user notes as study material.",
               },
             ],
           },
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ result });
   } catch (error) {
-    console.error("CampusFlow AI error:", error);
+    console.error("Study Sync AI error:", error);
 
     if (error.name === "AbortError") {
       return res.status(504).json({

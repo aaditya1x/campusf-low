@@ -94,7 +94,7 @@ export default function Login({ onLogin }) {
             <span className={styles.brandIcon}>
               <GraduationCap size={27} />
             </span>
-            <span>CampusFlow</span>
+            <span>Study Sync</span>
           </div>
 
           <div className={styles.brandContent}>
@@ -132,7 +132,7 @@ export default function Login({ onLogin }) {
         <div className={styles.formPanel}>
           <div className={styles.mobileBrand}>
             <GraduationCap size={25} />
-            <strong>CampusFlow</strong>
+            <strong>Study Sync</strong>
           </div>
 
           <div className={styles.formHeading}>
@@ -140,12 +140,12 @@ export default function Login({ onLogin }) {
               {mode === "login" ? "WELCOME BACK" : "GET STARTED"}
             </span>
             <h2>
-              {mode === "login" ? "Sign in to CampusFlow" : "Create your account"}
+              {mode === "login" ? "Sign in to Study Sync" : "Create your account"}
             </h2>
             <p>
               {mode === "login"
                 ? "Enter your details to access your learning space."
-                : "Join CampusFlow and organize your learning."}
+                : "Join Study Sync and organize your learning."}
             </p>
           </div>
 
@@ -258,7 +258,7 @@ export default function Login({ onLogin }) {
 
           <p className={styles.switchText}>
             {mode === "login"
-              ? "New to CampusFlow?"
+              ? "New to Study Sync?"
               : "Already have an account?"}{" "}
             <button
               type="button"
