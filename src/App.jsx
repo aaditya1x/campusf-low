@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -25,6 +24,7 @@ import { Toast } from "./components/Toast/index.js";
 import { Login } from "./components/Login/index.js";
 
 import { usePersistentState } from "./hooks/usePersistentState.js";
+import { supabase } from "./lib/supabase.js";
 import {
   initialCourses,
   initialMaterials,
@@ -47,9 +47,7 @@ const navItems = [
 
 function readSession() {
   try {
-    const value = JSON.parse(
-      localStorage.getItem(SESSION_KEY) || "null"
-    );
+    const value = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
 
     return value?.authenticated === true &&
       typeof value.username === "string" &&
@@ -71,25 +69,64 @@ export default function App() {
 
   const [courses, setCourses] = usePersistentState(
     "campusflow-courses",
-    initialCourses
+    initialCourses,
   );
 
   const [materials, setMaterials] = usePersistentState(
     "campusflow-materials",
-    initialMaterials
+    initialMaterials,
   );
 
   const [tasks, setTasks] = usePersistentState(
     "campusflow-tasks",
-    initialTasks
+    initialTasks,
   );
 
   const [toast, setToast] = useState("");
 
-  const [profilePicture, setProfilePicture] = usePersistentState(
-    "campusflow-profile-picture",
-    ""
-  );
+  const [profilePicture, setProfilePicture] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCloudProfilePhoto() {
+      const { data, error } = await supabase.auth.getUser();
+
+      if (error || !data.user || !active) return;
+
+      const path = data.user.user_metadata?.avatar_path;
+
+      console.log("USER METADATA:", data.user.user_metadata);
+      console.log("SAVED PHOTO PATH:", path);
+
+      if (!path) {
+        setProfilePicture("");
+        return;
+      }
+
+      const { data: signedData, error: signedError } =
+  await supabase.storage
+    .from("Profile-photos")
+    .createSignedUrl(path, 3600, {
+      download: false,
+    });
+
+      if (!active) return;
+
+      if (signedError) {
+        console.error("Could not load profile photo:", signedError);
+        return;
+      }
+
+      setProfilePicture(signedData.signedUrl);
+    }
+
+    loadCloudProfilePhoto();
+
+    return () => {
+      active = false;
+    };
+  }, [session?.authenticated]);
 
   const [query, setQuery] = useState("");
 
@@ -116,12 +153,12 @@ export default function App() {
       (
         courses.reduce(
           (sum, course) => sum + (Number(course.progress) || 0),
-          0
+          0,
         ) /
         Math.max(courses.length, 1) /
         5
       ).toFixed(1),
-    [courses]
+    [courses],
   );
 
   function notify(message) {
@@ -149,10 +186,7 @@ export default function App() {
     };
 
     try {
-      localStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify(nextSession)
-      );
+      localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
 
       setSession(nextSession);
       setActive("Dashboard");
@@ -191,8 +225,7 @@ export default function App() {
     setActive,
   };
 
-  const title =
-    navItems.find((item) => item.id === active)?.label || active;
+  const title = navItems.find((item) => item.id === active)?.label || active;
 
   if (!session?.authenticated) {
     return <Login onLogin={handleLogin} />;
@@ -295,8 +328,8 @@ export default function App() {
                   <span className={styles.sparkle}>✦</span>
                   <h2>Your AI study companion</h2>
                   <p>
-                    Turn notes into clear summaries, concept
-                    explanations and practice quizzes.
+                    Turn notes into clear summaries, concept explanations and
+                    practice quizzes.
                   </p>
                   <button onClick={() => setActive("AI Tools")}>
                     Explore AI tools <span>↗</span>
@@ -316,9 +349,7 @@ export default function App() {
 
         {active === "Tasks" && <TasksPanel {...shared} />}
 
-        {active === "AI Tools" && (
-          <AIStudyTools notify={notify} />
-        )}
+        {active === "AI Tools" && <AIStudyTools notify={notify} />}
 
         {active === "Progress" && (
           <ProgressReport
